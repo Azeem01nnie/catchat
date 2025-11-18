@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CatChat 🐱</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>CatChat 🐱</h1>
+        <div class="controls">
+          <button id="nextBtn">Next</button>
+          <button id="reportBtn">Report</button>
+        </div>
+      </header>
+
+      <main>
+        <div id="status" class="status">Connecting...</div>
+        <div id="chat" class="chat"></div>
+        <form id="msgForm" class="input-row">
+          <input
+            id="msgInput"
+            autocomplete="off"
+            placeholder="Say something..."
+          />
+          <button type="submit">Send</button>
+        </form>
+      </main>
+      <footer>
+        <small
+          >Built with Go + WebSockets — CatChat 🐱 by Azee Early Access</small
+        >
+      </footer>
+    </div>
+
+    <script>
+      (() => {
+        const status = document.getElementById("status");
+        const chat = document.getElementById("chat");
+        const form = document.getElementById("msgForm");
+        const input = document.getElementById("msgInput");
+        const nextBtn = document.getElementById("nextBtn");
+        const reportBtn = document.getElementById("reportBtn");
+
+        let typingTimeout;
+
+        let tag = prompt(
+          "Welcome to CatChat! Enter a tag / interest (optional)",
+          "default"
+        );
+        if (!tag) tag = "default";
+
+        const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
+        const wsUrl =
+          wsProtocol +
+          "://" +
+          location.host +
+          "/ws?tag=" +
+          encodeURIComponent(tag);
+        const ws = new WebSocket(wsUrl);
+
+        function addLine(text, cls = "", timestamp = "") {
+          const d = document.createElement("div");
+          d.className = "line " + cls;
+          d.textContent = (timestamp ? `[${timestamp}] ` : "") + text;
+          chat.appendChild(d);
+          chat.scrollTop = chat.scrollHeight;
+        }
+
+        ws.addEventListener("open", () => {
+          status.textContent =
+            "Connected to CatChat 🐱 — looking for partner...";
+        });
+        ws.addEventListener("close", () => {
+          status.textContent = "Disconnected from server";
+          addLine("--- disconnected ---", "system");
+        });
+        ws.addEventListener("message", (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            switch (msg.type) {
+              case "waiting":
+                status.textContent = msg.text;
+                addLine(msg.text, "system", msg.timestamp);
+                break;
+              case "paired":
+                status.textContent = "Paired";
+                addLine(msg.text, "system", msg.timestamp);
+                break;
+              case "message":
+                addLine("Partner: " + msg.text, "partner", msg.timestamp);
+                break;
+              case "system":
+                addLine(msg.text, "system", msg.timestamp);
+                break;
+              case "partner_left":
+                status.textContent = "Partner left";
+                addLine(msg.text, "system", msg.timestamp);
+                break;
+              case "typing":
+                status.textContent = msg.text;
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                  status.textContent = "Paired";
+                }, 2000);
+                break;
+            }
+          } catch (e) {
+            console.error(e);
+          }
+        });
+
+        form.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const txt = input.value.trim();
+          if (!txt) return;
+          ws.send(JSON.stringify({ type: "message", text: txt }));
+          addLine(
+            "You: " + txt,
+            "you",
+            new Date().toLocaleTimeString().slice(0, 5)
+          );
+          input.value = "";
+        });
+
+        input.addEventListener("input", () => {
+          ws.send(JSON.stringify({ type: "typing" }));
+        });
+
+        nextBtn.addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "next" }));
+          addLine("You pressed Next — finding a new partner...", "system");
+          chat.innerHTML = "";
+          status.textContent = "Finding a new partner...";
+        });
+
+        reportBtn.addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "report" }));
+          addLine(
+            "You reported the current chat. Moderators will review (demo).",
+            "system"
+          );
+        });
+      })();
+    </script>
+  </body>
+</html>
